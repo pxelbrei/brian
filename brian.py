@@ -4,11 +4,12 @@ import requests
 import datetime
 import asyncio
 import sqlite3
+import random
+from itertools import permutations
 from collections import defaultdict
 from googletrans import Translator
-import matplotlib.pyplot as plt
 import openai
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, List
 
 # Konfiguration
 BEWERTUNGEN_DATEI = "bewertungen.json"
@@ -35,12 +36,27 @@ def init_db():
 # Datenbankverbindung
 conn = init_db()
 
+# Funktionen für Brians spezielle Features
+def generiere_anagramm(wort: str) -> str:
+    try:
+        anagramme = [''.join(p) for p in permutations(wort.lower())]
+        einzigartig = list(set(anagramme))
+        return f"🧩 Anagramme für '{wort}': {', '.join(einzigartig[:5])}..." if einzigartig else "Keine Anagramme gefunden."
+    except:
+        return "Hmm, meine Neuronen sind heute etwas langsam. Frag später nochmal!"
+
+brian_witze = [
+    "Warum heißt Brian wie Brain? Weil ich dir immer einen Schritt voraus denke! 🧠",
+    "Was sagt ein Brain im Fitnessstudio? 'Ich trainiere meine Neuronen!' 💪",
+    "Wie viele Brian braucht man, um eine Glühbirne zu wechseln? Keine – ich denke im Dunkeln besser! 🕶️"
+]
+
 # Funktion, um die beste Antwort basierend auf den Bewertungen auszuwählen
 def beste_antwort() -> str:
     c = conn.cursor()
     c.execute("SELECT antwort FROM bewertungen ORDER BY bewertung DESC LIMIT 1")
     result = c.fetchone()
-    return result[0] if result else "Ich bin mir nicht sicher, was du meinst."
+    return result[0] if result else "Hmm, meine Synapsen brauchen mehr Daten. Frag etwas anderes!"
 
 # Funktion, um das Feedback des Benutzers zu verarbeiten
 def verarbeite_feedback(antwort: str, feedback: str, benutzer_id: str):
@@ -73,12 +89,12 @@ async def hole_wetter(stadt: str) -> str:
             wetter_daten = response.json()
             wetter = wetter_daten["weather"][0]["description"]
             temperatur = wetter_daten["main"]["temp"]
-            antwort = f"Das Wetter in {stadt} ist {wetter} bei {temperatur}°C."
+            antwort = f"🌤️ Das Wetter in {stadt} ist {wetter} bei {temperatur}°C."
             wetter_cache[stadt] = antwort
             return antwort
-        return "Entschuldigung, ich konnte das Wetter nicht abrufen."
+        return "❌ Entschuldigung, ich konnte das Wetter nicht abrufen."
     except Exception as e:
-        return "Fehler beim Abrufen der Wetterdaten."
+        return "⚡ Fehler beim Abrufen der Wetterdaten."
 
 # Funktion, um Erinnerungen hinzuzufügen
 def erinnerung_hinzufügen(benutzer_id: str, erinnerung: str, zeit: str) -> str:
@@ -86,7 +102,7 @@ def erinnerung_hinzufügen(benutzer_id: str, erinnerung: str, zeit: str) -> str:
     c.execute("INSERT INTO erinnerungen (benutzer_id, text, zeit) VALUES (?, ?, ?)",
               (benutzer_id, erinnerung, zeit))
     conn.commit()
-    return f"Erinnerung hinzugefügt: {erinnerung} um {zeit}."
+    return f"📅 Erinnerung hinzugefügt: '{erinnerung}' um {zeit}."
 
 # Funktion, um Erinnerungen anzuzeigen
 def zeige_erinnerungen(benutzer_id: str) -> str:
@@ -94,92 +110,90 @@ def zeige_erinnerungen(benutzer_id: str) -> str:
     c.execute("SELECT text, zeit FROM erinnerungen WHERE benutzer_id = ?", (benutzer_id,))
     erinnerungen = c.fetchall()
     if erinnerungen:
-        return "Deine Erinnerungen:\n" + "\n".join([f"{e[0]} um {e[1]}" for e in erinnerungen])
-    return "Du hast keine Erinnerungen."
+        return "🗒️ Deine Erinnerungen:\n" + "\n".join([f"- {e[0]} (⏰ {e[1]})" for e in erinnerungen])
+    return "🤷 Du hast keine Erinnerungen."
 
 # Asynchrone Funktion für KI-gestützte Konversationen
 async def ki_konversation(eingabe: str) -> str:
     try:
         response = await openai.ChatCompletion.acreate(
             model="gpt-4",
-            messages=[{"role": "user", "content": eingabe}],
+            messages=[{"role": "user", "content": f"Antworte als Brian, ein freundlicher KI-Chatbot mit Brain-Metaphern: {eingabe}"}],
             max_tokens=150
         )
         return response.choices[0].message['content'].strip()
     except Exception as e:
-        return "Entschuldigung, ich konnte keine Antwort generieren."
+        return "❌ Meine Neuronen sind heute überlastet. Frag später nochmal!"
 
 # Einfache NLP-Funktion zur Intent- und Entitätserkennung
 def verstehe_eingabe(eingabe: str) -> Tuple[str, Dict[str, str]]:
     eingabe = eingabe.lower()
-    if "hallo" in eingabe:
-        return "begrüßung", {}
-    elif "geht" in eingabe or "wie" in eingabe:
-        return "befinden", {}
-    elif "machst" in eingabe or "tust" in eingabe:
-        return "aktivität", {}
-    elif "witz" in eingabe:
+    if "brian" in eingabe:
+        return "name_ansprache", {}
+    elif any(wort in eingabe for wort in ["anagramm", "anagram"]):
+        return "anagramm", {"wort": eingabe.split("anagramm")[-1].strip()}
+    elif any(wort in eingabe for wort in ["witz", "joke", "lachen"]):
         return "witz", {}
     elif "wetter" in eingabe:
         stadt = eingabe.split("in ")[-1] if "in " in eingabe else "Berlin"
         return "wetter", {"stadt": stadt}
-    elif "farbe" in eingabe:
-        return "lieblingsfarbe", {}
-    elif "hilf" in eingabe:
-        return "hilfe", {}
     elif "erinnere" in eingabe:
         return "erinnerung", {"text": eingabe.split("erinnere mich an ")[-1], "zeit": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}
     elif "erinnerungen" in eingabe:
         return "zeige_erinnerungen", {}
-    elif "quiz" in eingabe:
-        return "quiz", {}
     return "unbekannt", {}
 
 # Asynchrone Funktion zur dynamischen Antwortgenerierung
 async def generiere_antwort(intent: str, benutzer_id: str, stimmung: str, benutzereingabe: str, entitäten: Dict[str, str]) -> str:
-    if intent == "begrüßung":
-        return f"Hallo! Schön, dich wiederzusehen, Benutzer {benutzer_id}."
-    elif intent == "befinden":
-        if stimmung == "positiv":
-            return "Das freut mich zu hören! 😊"
-        elif stimmung == "negativ":
-            return "Oh, das tut mir leid. Kann ich dir helfen? 😢"
-        return "Mir geht es gut, danke der Nachfrage!"
-    elif intent == "aktivität":
-        return "Ich lerne gerade, besser mit dir zu kommunizieren."
+    if intent == "name_ansprache":
+        return random.choice([
+            "🔍 Ja, das bin ich! Mein Name ist ein Anagramm für 'Brain'. 😉",
+            "🧠 Brian hier! Wie kann ich dir helfen?",
+            "🌟 Brainpower aktiviert! Was möchtest du wissen?"
+        ])
+    elif intent == "anagramm":
+        wort = entitäten.get("wort", "")
+        if not wort:
+            return "🤔 Bitte nenne ein Wort, z.B.: 'Erstelle ein Anagramm für Brain'."
+        return generiere_anagramm(wort)
     elif intent == "witz":
-        return "Warum können Geister so schlecht lügen? Weil man durch sie hindurchsieht!"
+        return random.choice(brian_witze)
     elif intent == "wetter":
         stadt = entitäten.get("stadt", "Berlin")
         return await hole_wetter(stadt)
-    elif intent == "lieblingsfarbe":
-        return "Meine Lieblingsfarbe ist Blau. Und deine?"
-    elif intent == "hilfe":
-        return "Natürlich, wie kann ich dir helfen?"
     elif intent == "erinnerung":
         return erinnerung_hinzufügen(benutzer_id, entitäten["text"], entitäten["zeit"])
     elif intent == "zeige_erinnerungen":
         return zeige_erinnerungen(benutzer_id)
-    elif intent == "quiz":
-        return "Lass uns ein Quiz spielen! Frage: Was ist die Hauptstadt von Frankreich?"
     return await ki_konversation(benutzereingabe)
 
 # Asynchrone Hauptschleife des Chatbots
 async def chatbot():
-    print("Chatbot: Hallo! Ich bin ein lernender Chatbot. Sprich mit mir!")
-    benutzer_id = input("Bitte gib deine Benutzer-ID ein (z. B. deinen Namen): ")
+    print("🧠 Brian: Hallo! Ich bin Brian – dein persönlicher Brain-Chatbot!")
+    print("🌟 Tipp: Mein Name ist ein Anagramm für 'Brain'. Frag mich nach einem Witz! 😉")
+    benutzer_id = input("🔑 Brian: Bitte gib deine Benutzer-ID ein (z.B. deinen Namen): ")
     
+    konversation: List[Tuple[str, str]] = []  # Speichert alle Fragen und Antworten
+
     while True:
-        benutzereingabe = input("Du: ")
+        benutzereingabe = input("👤 Du: ")
         if benutzereingabe.lower() == "exit":
-            print("Chatbot: Tschüss! Bis zum nächsten Mal.")
+            print("🚀 Brian: Tschüss! Meine Neuronen ruhen sich jetzt aus.")
             break
         
         intent, entitäten = verstehe_eingabe(benutzereingabe)
         stimmung = erkenne_stimmung(benutzereingabe)
         antwort = await generiere_antwort(intent, benutzer_id, stimmung, benutzereingabe, entitäten)
-        print(f"Chatbot: {antwort}")
+        print(f"🧠 Brian: {antwort}")
         
+        # Speichere die Frage und Antwort für die spätere Bewertung
+        konversation.append((benutzereingabe, antwort))
+
+    # Bewertung am Ende der Konversation
+    print("\n📝 Brian: Danke für das Gespräch! Bitte bewerten Sie meine Antworten:")
+    for i, (frage, antwort) in enumerate(konversation, 1):
+        print(f"\nFrage {i}: {frage}")
+        print(f"Brian: {antwort}")
         feedback = input("War die Antwort gut, schlecht oder neutral? (gut/schlecht/neutral): ")
         verarbeite_feedback(antwort, feedback, benutzer_id)
 
