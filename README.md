@@ -2,5 +2,5 @@
 <br/><br/>
 <img src="https://pixeldrain.com/api/file/aFxnEYGk" alt="brian2.png" width="400" height="400";">
 <br/><br/>
-<span font-size:10px">(gptpicture feel free too use)</span>
+<sub><sup>(gptpicture feel free too use)</sup>sub></sub>sup>
 </p>
